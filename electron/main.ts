@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import knex from 'knex';
@@ -20,16 +20,20 @@ import {
   listQuests,
   saveGroup,
 } from './questRepository';
+import { loadUserProfile, saveUserProfile } from './userProfile';
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    width: 1600,
+    height: 1000,
     minWidth: 980,
     minHeight: 680,
     backgroundColor: '#f7f8fb',
+    frame: false,
+    show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(app.getAppPath(), 'electron', 'preload.cjs'),
       contextIsolation: true,
@@ -37,6 +41,11 @@ function createWindow() {
       sandbox: true,
     },
   });
+  mainWindow.maximize();
+  const notifyMaximizeState = () => mainWindow?.webContents.send('window:maximized', Boolean(mainWindow?.isMaximized()));
+  mainWindow.on('maximize', notifyMaximizeState);
+  mainWindow.on('unmaximize', notifyMaximizeState);
+  mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const devUrl = process.env.VITE_DEV_SERVER_URL;
@@ -102,6 +111,34 @@ handle('groups:save', async value => {
   const group = assertGroupInput(request.group);
   await ensureQuestDatabase();
   return saveGroup(group, request.id as string | undefined);
+});
+handle('profile:get', () => loadUserProfile());
+handle('profile:save', value => saveUserProfile(value));
+handle('window:minimize', () => mainWindow?.minimize());
+handle('window:toggleMaximize', () => {
+  if (!mainWindow) return false;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return mainWindow.isMaximized();
+});
+handle('window:close', () => mainWindow?.close());
+handle('window:isMaximized', () => Boolean(mainWindow?.isMaximized()));
+handle('invites:compose', async value => {
+  const request = value as { email?: unknown; group?: unknown; quest?: unknown } | null;
+  if (!request || typeof request.email !== 'string' || request.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email.trim()) ||
+      typeof request.group !== 'string' || !request.group.trim() || request.group.length > 120 ||
+      (request.quest !== undefined && (typeof request.quest !== 'string' || request.quest.length > 240))) {
+    throw new Error('Informe um e-mail válido e selecione um grupo.');
+  }
+  const profile = await loadUserProfile();
+  if (!profile) throw new Error('Crie seu perfil Master antes de convidar pessoas.');
+  const scope = typeof request.quest === 'string' && request.quest.trim()
+    ? `a quest "${request.quest.trim()}" no grupo "${request.group.trim()}"`
+    : `o grupo "${request.group.trim()}"`;
+  const subject = `Convite para colaborar no Questly`;
+  const body = `Olá!\n\n${profile.name} (${profile.email}) convidou você para colaborar em ${scope} no Questly.\n\nEste convite foi preparado pelo app Questly. O acesso individual será habilitado quando o login de workspace estiver disponível.`;
+  await shell.openExternal(`mailto:${encodeURIComponent(request.email.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+  return { opened: true };
 });
 
 async function ensureQuestDatabase() {

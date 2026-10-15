@@ -17,4 +17,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () => ipcRenderer.invoke('groups:list'),
     save: request => ipcRenderer.invoke('groups:save', request),
   },
+  profile: {
+    get: () => ipcRenderer.invoke('profile:get'),
+    save: profile => ipcRenderer.invoke('profile:save', profile),
+  },
+  window: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+    close: () => ipcRenderer.invoke('window:close'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    onMaximizedChange: callback => {
+      const listener = (_event, maximized) => callback(maximized);
+      ipcRenderer.on('window:maximized', listener);
+      return () => ipcRenderer.removeListener('window:maximized', listener);
+    },
+  },
+  invites: {
+    compose: request => ipcRenderer.invoke('invites:compose', request),
+  },
 });

@@ -25,6 +25,9 @@ declare global {
   interface WorkspaceGroupView {
     id: string; title: string; description: string; memberIds: string[]; adminIds: string[]; color: string;
   }
+  interface UserProfileView {
+    name: string; nickname: string; email: string; role: 'Master';
+  }
   interface Window {
     electronAPI?: {
       database: {
@@ -42,6 +45,20 @@ declare global {
       groups: {
         list: () => Promise<WorkspaceGroupView[]>;
         save: (request: { id?: string; group: Omit<WorkspaceGroupView, 'id'> }) => Promise<WorkspaceGroupView[]>;
+      };
+      profile: {
+        get: () => Promise<UserProfileView | null>;
+        save: (profile: Omit<UserProfileView, 'role'>) => Promise<UserProfileView>;
+      };
+      window: {
+        minimize: () => Promise<void>;
+        toggleMaximize: () => Promise<boolean>;
+        close: () => Promise<void>;
+        isMaximized: () => Promise<boolean>;
+        onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
+      };
+      invites: {
+        compose: (request: { email: string; group: string; quest?: string }) => Promise<{ opened: boolean }>;
       };
     };
   }
