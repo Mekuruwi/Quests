@@ -14,8 +14,10 @@ type Subquest = { id: string; title: string; assignees: string[]; done: boolean 
 type Quest = {
   id: string; title: string; description: string; group: string; due: string; dueDate: string;
   recurrence: Recurrence; status: 'Em andamento' | 'A fazer' | 'Concluída';
-  assignees: string[]; subtasks: Subquest[]; color: string; anchorDay?: number;
+  assignees: string[]; subtasks: Subquest[]; color: string; anchorDay?: number; weekdays?: number[];
 };
+const weekDays = [{ value: 1, label: 'Seg' }, { value: 2, label: 'Ter' }, { value: 3, label: 'Qua' }, { value: 4, label: 'Qui' }, { value: 5, label: 'Sex' }, { value: 6, label: 'Sáb' }, { value: 0, label: 'Dom' }];
+const weekdayNames = weekDays.reduce<Record<number, string>>((names, day) => ({ ...names, [day.value]: day.label }), {});
 
 const people: Member[] = [
   { id: 'ana', name: 'Ana Costa', initials: 'AC', color: '#e9a377' },
@@ -78,12 +80,12 @@ const nav = [
   { id: 'Calendário', icon: CalendarDays }, { id: 'Grupos', icon: Users }, { id: 'Relatórios', icon: Activity },
 ];
 
-function dateForNextOccurrence(source: string, recurrence: Recurrence, anchorDay = Number(source.slice(-2))) {
+function dateForNextOccurrence(source: string, recurrence: Recurrence, anchorDay = Number(source.slice(-2)), weekdays: number[] = []) {
   const [year, month, day] = source.split('-').map(Number);
   let date = new Date(year, month - 1, day);
   const advance = () => {
     if (recurrence === 'Diária') date.setDate(date.getDate() + 1);
-    else if (recurrence === 'Semanal') date.setDate(date.getDate() + 7);
+    else if (recurrence === 'Semanal') date.setDate(date.getDate() + 1);
     else if (recurrence === 'Mensal') {
       const targetMonth = date.getMonth() + 1;
       const targetYear = date.getFullYear() + Math.floor(targetMonth / 12);
@@ -93,7 +95,10 @@ function dateForNextOccurrence(source: string, recurrence: Recurrence, anchorDay
     }
   };
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  do { advance(); } while (date <= today && recurrence !== 'Única');
+  const selectedWeekdays = recurrence === 'Semanal' ? (weekdays.length ? weekdays : [new Date(year, month - 1, day).getDay()]) : [];
+  do {
+    advance();
+  } while ((date <= today && recurrence !== 'Única') || (recurrence === 'Semanal' && !selectedWeekdays.includes(date.getDay())));
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
@@ -105,7 +110,7 @@ function todayString() {
 function nextOccurrenceFrom(quest: Quest): Quest | undefined {
   if (quest.recurrence === 'Única') return undefined;
   const anchorDay = quest.anchorDay || Number(quest.dueDate.slice(-2));
-  const dueDate = dateForNextOccurrence(quest.dueDate, quest.recurrence, anchorDay);
+  const dueDate = dateForNextOccurrence(quest.dueDate, quest.recurrence, anchorDay, quest.weekdays);
   return { ...quest, id: crypto.randomUUID(), dueDate, due: displayDate(dueDate), status: 'A fazer', anchorDay, subtasks: quest.subtasks.map(s => ({ ...s, id: crypto.randomUUID(), done: false })) };
 }
 
@@ -243,7 +248,7 @@ function App() {
       return nextOccurrence ? [nextOccurrence, ...updated] : updated;
     });
   };
-  const createQuest = async (form: { title: string; group: string; recurrence: Recurrence; assignees: string[]; description: string; dueDate: string }) => {
+  const createQuest = async (form: { title: string; group: string; recurrence: Recurrence; assignees: string[]; description: string; dueDate: string; weekdays: number[] }) => {
     const quest: Quest = { ...form, id: crypto.randomUUID(), due: displayDate(form.dueDate), status: 'A fazer', subtasks: [], color: 'blue' };
     if (window.electronAPI) {
       try { setQuests(await window.electronAPI.quests.create(form)); setModal(false); flash('Quest criada e salva no banco.'); }
@@ -575,7 +580,7 @@ function GroupsPage({ groups, quests, role, profile, onAdd, onEdit, onInvite }: 
         {canManage && <button className="icon-button group-menu" title={`Editar ${group.title}`} onClick={() => onEdit(group)}><MoreHorizontal size={18}/></button>}
         <h3>{group.title}</h3><p>{group.description || 'Sem descrição.'}</p>
         <div className="group-card-stats"><span><b>{group.memberIds.length}</b> pessoas</span><span><b>{groupQuests.filter(quest => quest.status !== 'Concluída').length}</b> quests abertas</span></div>
-        <div className="group-card-bottom"><AvatarStack ids={group.memberIds} profile={profile}/>{canManage && <div className="group-card-actions"><button onClick={() => onInvite(group)}><Mail size={13}/> Convidar</button><button onClick={() => onEdit(group)}>Gerenciar <ArrowRight size={14}/></button></div>}</div>
+        <div className="group-card-bottom"><AvatarStack ids={group.memberIds} profile={profile}/>{canManage && <div className="group-card-actions"><button type="button" className="group-action-button invite" onClick={() => onInvite(group)}><Mail size={13}/> Convidar</button><button type="button" className="group-action-button manage" onClick={() => onEdit(group)}>Gerenciar <ArrowRight size={14}/></button></div>}</div>
         {!!group.adminIds.length && <small className="group-admin-line">Admins: {group.adminIds.map(id => id === 'ana' ? profile.name : people.find(person => person.id === id)?.name || id).join(', ')}</small>}
       </div>;
     })}{!groups.length && <div className="empty-state group-empty-state"><Users size={22}/><b>Nenhum grupo cadastrado</b><span>Crie um grupo para organizar pessoas e começar a criar quests.</span>{role === 'Master' && <button className="primary-button" onClick={onAdd}><Plus size={16}/> Criar primeiro grupo</button>}</div>}</div>
@@ -590,17 +595,21 @@ function GroupModal({ group, profile, onClose, onSave }: { group: WorkspaceGroup
   const [adminIds, setAdminIds] = useState(group?.adminIds || []);
   const [color, setColor] = useState(group?.color || 'blue');
   const displayedPeople = people.map(person => person.id === 'ana' ? { ...person, name: profile.name, initials: profile.nickname.slice(0, 2).toUpperCase() } : person);
-  const toggleMember = (id: string) => setMemberIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
+  const toggleMember = (id: string) => {
+    const removing = memberIds.includes(id);
+    setMemberIds(current => removing ? current.filter(value => value !== id) : [...current, id]);
+    if (removing) setAdminIds(current => current.filter(value => value !== id));
+  };
   const toggleAdmin = (id: string) => {
     if (!memberIds.includes(id)) setMemberIds(current => [...current, id]);
     setAdminIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
   };
   return <div className="overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><form className="modal group-modal" onSubmit={event => { event.preventDefault(); onSave({ title: title.trim(), description: description.trim(), memberIds, adminIds: adminIds.filter(id => memberIds.includes(id)), color }, group?.id); }}>
-    <div className="modal-head"><div><div className="eyebrow">PESSOAS E COLABORAÇÃO</div><h2>{group ? 'Gerenciar grupo' : 'Novo grupo'}</h2><p>Escolha participantes e responsáveis de demonstração.</p></div><button type="button" className="icon-button" onClick={onClose}><X size={19}/></button></div>
+    <div className="modal-head"><div><div className="eyebrow">PESSOAS E COLABORAÇÃO</div><h2>{group ? 'Gerenciar grupo' : 'Novo grupo'}</h2><p>Escolha participantes e responsáveis de demonstração.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={19}/></button></div>
     <div className="modal-body"><label className="field-label">Nome do grupo<input autoFocus maxLength={120} value={title} onChange={event => setTitle(event.target.value)} placeholder="Ex.: Produto" disabled={Boolean(group)}/>{group && <small className="field-hint">O nome é mantido para preservar o vínculo das quests existentes.</small>}</label>
       <label className="field-label">Descrição<textarea maxLength={1000} rows={3} value={description} onChange={event => setDescription(event.target.value)} placeholder="Qual é o foco deste grupo?"/></label>
-      <div className="field-label">Pessoas do grupo<div className="people-picker">{displayedPeople.map(person => <button type="button" key={person.id} className={`person-chip ${memberIds.includes(person.id) ? 'selected' : ''}`} onClick={() => toggleMember(person.id)}><Avatar id={person.id} profile={profile}/>{person.name.split(' ')[0]}{memberIds.includes(person.id) && <Check size={13}/>}</button>)}</div></div>
-      <div className="field-label">Admins do grupo<div className="people-picker">{displayedPeople.filter(person => memberIds.includes(person.id)).map(person => <button type="button" key={person.id} className={`person-chip ${adminIds.includes(person.id) ? 'selected' : ''}`} onClick={() => toggleAdmin(person.id)}><Shield size={13}/>{person.name.split(' ')[0]}</button>)}{!memberIds.length && <small className="field-hint">Adicione uma pessoa primeiro.</small>}</div></div>
+      <div className="field-label">Pessoas do grupo<div className="people-picker">{displayedPeople.map(person => <button type="button" key={person.id} className={`person-chip ${memberIds.includes(person.id) ? 'selected' : ''}`} aria-pressed={memberIds.includes(person.id)} title={`${memberIds.includes(person.id) ? 'Remover' : 'Adicionar'} ${person.name} ${memberIds.includes(person.id) ? 'do' : 'ao'} grupo`} onClick={() => toggleMember(person.id)}><Avatar id={person.id} profile={profile}/>{person.name.split(' ')[0]}{memberIds.includes(person.id) && <Check size={13}/>}</button>)}</div><small className="field-hint">Clique em uma pessoa selecionada para removê-la deste grupo. Isso não altera responsáveis de quests já criadas.</small></div>
+      <div className="field-label">Admins do grupo<div className="people-picker">{displayedPeople.filter(person => memberIds.includes(person.id)).map(person => <button type="button" key={person.id} className={`person-chip ${adminIds.includes(person.id) ? 'selected' : ''}`} aria-pressed={adminIds.includes(person.id)} title={`${adminIds.includes(person.id) ? 'Remover administração de' : 'Tornar admin'} ${person.name}`} onClick={() => toggleAdmin(person.id)}><Shield size={13}/>{person.name.split(' ')[0]}</button>)}{!memberIds.length && <small className="field-hint">Adicione uma pessoa primeiro.</small>}</div></div>
       <label className="field-label">Cor<select value={color} onChange={event => setColor(event.target.value)}><option value="peach">Pêssego</option><option value="blue">Azul</option><option value="purple">Roxo</option><option value="green">Verde</option><option value="yellow">Amarelo</option></select></label>
     </div><div className="modal-foot"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button" disabled={!title.trim() || !memberIds.length}><Save size={15}/> Salvar grupo</button></div>
   </form></div>;
@@ -697,9 +706,13 @@ function DatabaseSettingsPage() {
   </div>;
 }
 
-function QuestModal({ groups, profile, dueDate: initialDueDate, onClose, onCreate }: { groups: WorkspaceGroupView[]; profile: UserProfileView; dueDate?: string; onClose: () => void; onCreate: (form: { title: string; group: string; recurrence: Recurrence; assignees: string[]; description: string; dueDate: string }) => void }) {
+function QuestModal({ groups, profile, dueDate: initialDueDate, onClose, onCreate }: { groups: WorkspaceGroupView[]; profile: UserProfileView; dueDate?: string; onClose: () => void; onCreate: (form: { title: string; group: string; recurrence: Recurrence; assignees: string[]; description: string; dueDate: string; weekdays: number[] }) => void }) {
   const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const [dueDate, setDueDate] = useState(initialDueDate || todayString());
   const [group, setGroup] = useState(groups[0]?.title || ''); const [recurrence, setRecurrence] = useState<Recurrence>('Única'); const [assignees, setAssignees] = useState<string[]>(groups[0]?.memberIds.slice(0, 1) || []);
+  const [weekdays, setWeekdays] = useState<number[]>(() => {
+    const [year, month, day] = (initialDueDate || todayString()).split('-').map(Number);
+    return [new Date(year, month - 1, day).getDay()];
+  });
   const availableMembers = groups.find(item => item.title === group)?.memberIds || [];
   const displayedPeople = people.map(person => person.id === 'ana' ? { ...person, name: profile.name, initials: profile.nickname.slice(0, 2).toUpperCase() } : person);
   useEffect(() => {
@@ -708,7 +721,30 @@ function QuestModal({ groups, profile, dueDate: initialDueDate, onClose, onCreat
       return valid.length ? valid : availableMembers.slice(0, 1);
     });
   }, [group, groups]);
-  return <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}><div className="modal"><div className="modal-head"><div><div className="eyebrow">NOVA ENTREGA</div><h2>Criar uma quest</h2><p>Defina o objetivo e as pessoas responsáveis.</p></div><button className="icon-button" onClick={onClose}><X size={19}/></button></div><div className="modal-body"><label className="field-label">Nome da quest<input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex.: Preparar reunião de planejamento"/></label><label className="field-label">Descrição <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="O que precisa ser feito?" rows={3}/></label><div className="field-grid"><label className="field-label">Grupo<select value={group} onChange={e => setGroup(e.target.value)}>{groups.map(item => <option key={item.id} value={item.title}>{item.title}</option>)}</select></label><label className="field-label">Repetição<select value={recurrence} onChange={e => setRecurrence(e.target.value as Recurrence)}><option>Única</option><option>Diária</option><option>Semanal</option><option>Mensal</option></select></label></div><label className="field-label">Primeiro prazo<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></label><div className="field-label">Responsáveis da quest<div className="people-picker">{displayedPeople.filter(person => availableMembers.includes(person.id)).map(person => <button type="button" key={person.id} className={`person-chip ${assignees.includes(person.id) ? 'selected' : ''}`} onClick={() => setAssignees(prev => prev.includes(person.id) ? prev.filter(id => id !== person.id) : [...prev, person.id])}><Avatar id={person.id} profile={profile}/>{person.name.split(' ')[0]}{assignees.includes(person.id) && <Check size={13}/>}</button>)}</div><small className="field-hint">A participação no grupo não atribui automaticamente as subquests.</small></div></div><div className="modal-foot"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!title.trim() || !assignees.length || !dueDate || !group} onClick={() => onCreate({ title: title.trim(), description: description.trim(), group, recurrence, assignees, dueDate })}><Plus size={16}/> Criar quest</button></div></div></div>;
+  const toggleWeekday = (day: number) => setWeekdays(current => current.includes(day) ? current.filter(item => item !== day) : [...current, day]);
+  return <div className="overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="modal">
+      <div className="modal-head"><div><div className="eyebrow">NOVA ENTREGA</div><h2>Criar uma quest</h2><p>Defina o objetivo e as pessoas responsáveis.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><X size={19}/></button></div>
+      <div className="modal-body">
+        <label className="field-label">Nome da quest<input autoFocus value={title} onChange={event => setTitle(event.target.value)} placeholder="Ex.: Preparar reunião de planejamento"/></label>
+        <label className="field-label">Descrição <textarea value={description} onChange={event => setDescription(event.target.value)} placeholder="O que precisa ser feito?" rows={3}/></label>
+        <div className="field-grid">
+          <label className="field-label">Grupo<select value={group} onChange={event => setGroup(event.target.value)}>{groups.map(item => <option key={item.id} value={item.title}>{item.title}</option>)}</select></label>
+          <label className="field-label">Repetição<select value={recurrence} onChange={event => setRecurrence(event.target.value as Recurrence)}><option>Única</option><option>Diária</option><option>Semanal</option><option>Mensal</option></select></label>
+        </div>
+        <label className="field-label">Primeiro prazo<input type="date" value={dueDate} onChange={event => setDueDate(event.target.value)}/></label>
+        {recurrence === 'Semanal' && <div className="field-label">Repetir nos dias
+          <div className="weekday-picker">{weekDays.map(day => <button type="button" key={day.value} className={`weekday-option ${weekdays.includes(day.value) ? 'selected' : ''}`} aria-pressed={weekdays.includes(day.value)} onClick={() => toggleWeekday(day.value)}>{day.label}</button>)}</div>
+          <small className="field-hint">A primeira ocorrência usa o prazo escolhido; depois, repete nos dias selecionados.</small>
+        </div>}
+        <div className="field-label">Responsáveis da quest
+          <div className="people-picker">{displayedPeople.filter(person => availableMembers.includes(person.id)).map(person => <button type="button" key={person.id} className={`person-chip ${assignees.includes(person.id) ? 'selected' : ''}`} onClick={() => setAssignees(previous => previous.includes(person.id) ? previous.filter(id => id !== person.id) : [...previous, person.id])}><Avatar id={person.id} profile={profile}/>{person.name.split(' ')[0]}{assignees.includes(person.id) && <Check size={13}/>}</button>)}</div>
+          <small className="field-hint">A participação no grupo não atribui automaticamente as subquests.</small>
+        </div>
+      </div>
+      <div className="modal-foot"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button type="button" className="primary-button" disabled={!title.trim() || !assignees.length || !dueDate || !group || recurrence === 'Semanal' && !weekdays.length} onClick={() => onCreate({ title: title.trim(), description: description.trim(), group, recurrence, assignees, dueDate, weekdays })}><Plus size={16}/> Criar quest</button></div>
+    </div>
+  </div>;
 }
 
 function QuestDetail({ quest, members, profile, onClose, onComplete, onCheck, onAddSubquest }: { quest: Quest; members: string[]; profile: UserProfileView; onClose: () => void; onComplete: () => void; onCheck: (id: string) => void; onAddSubquest: (title: string, assignees: string[]) => void }) {
@@ -722,7 +758,7 @@ function QuestDetail({ quest, members, profile, onClose, onComplete, onCheck, on
       <div className="detail-top"><span className="eyebrow">DETALHE DA QUEST</span><button className="icon-button" onClick={onClose}><X size={19}/></button></div>
       <div className={`detail-banner ${quest.color}`}><span className="group-tag">{quest.group}</span></div>
       <h2 className="detail-title">{quest.title}</h2><p className="detail-description">{quest.description || 'Sem descrição adicionada.'}</p>
-      <div className="detail-info-grid"><div><small>STATUS</small><b><i className="status-dot"/>{quest.status}</b></div><div><small>PRAZO</small><b><CalendarDays size={14}/>{quest.due}</b></div><div><small>RECORRÊNCIA</small><b><Clock3 size={14}/>{quest.recurrence}</b></div></div>
+      <div className="detail-info-grid"><div><small>STATUS</small><b><i className="status-dot"/>{quest.status}</b></div><div><small>PRAZO</small><b><CalendarDays size={14}/>{quest.due}</b></div><div><small>RECORRÊNCIA</small><b><Clock3 size={14}/>{quest.recurrence}{quest.recurrence === 'Semanal' && quest.weekdays?.length ? ` · ${quest.weekdays.slice().sort((a, b) => weekDays.findIndex(day => day.value === a) - weekDays.findIndex(day => day.value === b)).map(day => weekdayNames[day]).join(', ')}` : ''}</b></div></div>
       <div className="detail-section">
         <div className="detail-section-head"><div><h3>Subquests</h3><p>{done} de {quest.subtasks.length} concluídas · cada item pode ter mais de um responsável</p></div>{quest.status !== 'Concluída' && <button className="icon-button" title="Adicionar subquest" onClick={() => setAdding(true)}><Plus size={17}/></button>}</div>
         <div className="detail-progress"><i style={{ width: `${quest.subtasks.length ? done / quest.subtasks.length * 100 : 0}%` }}/></div>
@@ -738,7 +774,7 @@ function QuestDetail({ quest, members, profile, onClose, onComplete, onCheck, on
         </form>}
       </div>
       <div className="detail-section people-section"><h3>Pessoas nesta quest</h3><div className="detail-people">{quest.assignees.map(id => <div key={id}><Avatar id={id} profile={profile}/><span>{displayedPeople.find(person => person.id === id)?.name}</span></div>)}</div></div>
-      <div className="recurrence-note"><Sparkles size={16}/><span>{quest.recurrence === 'Única' ? 'Quest única: não haverá nova ocorrência.' : `Ao concluir todas as subquests, a próxima ocorrência ${quest.recurrence.toLowerCase()} é criada automaticamente.`}</span></div>
+      <div className="recurrence-note"><Sparkles size={16}/><span>{quest.recurrence === 'Única' ? 'Quest única: não haverá nova ocorrência.' : quest.recurrence === 'Semanal' && quest.weekdays?.length ? `Ao concluir todas as subquests, a próxima ocorrência será criada nos dias ${quest.weekdays.slice().sort((a, b) => weekDays.findIndex(day => day.value === a) - weekDays.findIndex(day => day.value === b)).map(day => weekdayNames[day]).join(', ')}.` : `Ao concluir todas as subquests, a próxima ocorrência ${quest.recurrence.toLowerCase()} é criada automaticamente.`}</span></div>
       <div className="detail-footer">{!quest.subtasks.length && quest.status !== 'Concluída' ? <button className="primary-button" onClick={onComplete}><Check size={14}/> Concluir quest</button> : <button className="secondary-button" onClick={onClose}>Fechar</button>}<span><Shield size={14}/> {window.electronAPI ? 'Conectado ao banco configurado' : 'Dados de demonstração'}</span></div>
     </aside>
   </div>;

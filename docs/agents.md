@@ -67,7 +67,7 @@ flowchart TD
 3. **Abrir uma quest:** mostrar descrição, grupo, responsáveis, prazo, recorrência, histórico e lista de subquests. Membro vê ações permitidas para si; Admin vê controles do grupo.
 4. **Executar subquest:** todos os responsáveis atribuídos veem a mesma subquest compartilhada. Qualquer um deles pode concluí-la uma única vez; registrar quem concluiu e quando. A quest principal recalcula o progresso imediatamente. Se o produto precisar que cada pessoa confirme individualmente, isso será uma opção futura de política de conclusão.
 5. **Concluir a quest principal:** quando todas as subquests obrigatórias da ocorrência atual forem concluídas, marcar a ocorrência como concluída e registrar data e autor da última alteração. Sem subquests, um responsável autorizado conclui a quest diretamente.
-6. **Próxima recorrência:** após concluir a ocorrência atual, criar automaticamente a próxima ocorrência da definição recorrente, preservando histórico e atribuições configuradas. A próxima data deve seguir o intervalo e a regra escolhidos na criação (diária, semanal ou mensal); uma quest única não gera outra ocorrência. Não reabrir nem sobrescrever a ocorrência anterior.
+6. **Próxima recorrência:** após concluir a ocorrência atual, criar automaticamente a próxima ocorrência da definição recorrente, preservando histórico e atribuições configuradas. A próxima data deve seguir o intervalo e a regra escolhidos na criação (diária, semanal nos dias da semana selecionados ou mensal); uma quest única não gera outra ocorrência. Não reabrir nem sobrescrever a ocorrência anterior.
 
 ## Criar ou editar quest (Master/Admin)
 
@@ -158,7 +158,7 @@ O Master cria grupos, convida pessoas e atribui um ou mais Admins. Um Admin pode
 
 ### 4. Definição e agendamento de quests
 
-Master/Admin escolhe grupo, participantes, descrição, prazo inicial e frequência (`Única`, `Diária`, `Semanal`, `Mensal`). A recorrência fica na definição da quest. Cada execução ganha uma ocorrência independente, com prazo, responsáveis e estado próprios. Ao concluir a ocorrência, o sistema cria a seguinte segundo a regra persistida; a quest única encerra sem nova ocorrência.
+Master/Admin escolhe grupo, participantes, descrição, prazo inicial e frequência (`Única`, `Diária`, `Semanal`, `Mensal`). Na frequência semanal, também seleciona um ou mais dias; a primeira ocorrência mantém o prazo informado e as seguintes usam o próximo dia selecionado. A recorrência fica na definição da quest. Cada execução ganha uma ocorrência independente, com prazo, responsáveis e estado próprios. Ao concluir a ocorrência, o sistema cria a seguinte segundo a regra persistida; a quest única encerra sem nova ocorrência.
 
 **Resultado esperado:** uma falha de conexão ou repetição do evento de conclusão não cria duas ocorrências para o mesmo período. Edições da definição valem para ocorrências futuras; histórico concluído permanece imutável, exceto por correção explícita e auditada.
 

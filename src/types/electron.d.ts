@@ -19,7 +19,7 @@ declare global {
   }
   interface QuestRecordView {
     id: string; title: string; description: string; group: string; recurrence: 'Única' | 'Diária' | 'Semanal' | 'Mensal';
-    assignees: string[]; dueDate: string; due: string; status: 'A fazer' | 'Em andamento' | 'Concluída'; color: string;
+    assignees: string[]; dueDate: string; due: string; status: 'A fazer' | 'Em andamento' | 'Concluída'; color: string; weekdays: number[];
     subtasks: Array<{ id: string; title: string; assignees: string[]; done: boolean }>;
   }
   interface WorkspaceGroupView {
@@ -44,7 +44,7 @@ declare global {
       };
       quests: {
         list: () => Promise<QuestRecordView[]>;
-        create: (quest: { title: string; description: string; group: string; recurrence: 'Única' | 'Diária' | 'Semanal' | 'Mensal'; assignees: string[]; dueDate: string }) => Promise<QuestRecordView[]>;
+        create: (quest: { title: string; description: string; group: string; recurrence: 'Única' | 'Diária' | 'Semanal' | 'Mensal'; assignees: string[]; dueDate: string; weekdays?: number[] }) => Promise<QuestRecordView[]>;
         addSubquest: (request: { occurrenceId: string; title: string; assignees: string[] }) => Promise<QuestRecordView[]>;
         completeSubquest: (request: { occurrenceId: string; subquestId: string }) => Promise<QuestRecordView[]>;
         complete: (request: { occurrenceId: string }) => Promise<QuestRecordView[]>;

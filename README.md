@@ -22,7 +22,7 @@ Provedores disponíveis: SQLite local, PostgreSQL, Supabase/PostgreSQL, MySQL/Ma
 ## Fluxos disponíveis
 
 - No primeiro acesso, criar perfil local Master (nome, nickname e e-mail); janela abre maximizada com controles de título próprios.
-- Criar quests únicas, diárias, semanais ou mensais.
+- Criar quests únicas, diárias, semanais ou mensais; para a recorrência semanal, escolher os dias da semana em que as próximas ocorrências devem surgir.
 - Adicionar subquests e atribuir cada uma a várias pessoas.
 - Concluir subquests; ao concluir a última, concluir a ocorrência e gerar a próxima no banco.
 - Concluir diretamente uma quest sem subquests.
@@ -30,7 +30,7 @@ Provedores disponíveis: SQLite local, PostgreSQL, Supabase/PostgreSQL, MySQL/Ma
 - Preparar convite por e-mail para grupo ou quest e ajustar tema/cor em Configurações.
 - Filtrar por grupo e prazo e alternar a ordenação da lista.
 
-A frequência mensal preserva o dia escolhido e ajusta para o último dia do mês quando necessário. Ocorrências anteriores são mantidas como histórico.
+A frequência mensal preserva o dia escolhido e ajusta para o último dia do mês quando necessário. A recorrência semanal permite selecionar um ou mais dias; ao concluir uma ocorrência, a próxima é agendada no próximo dia selecionado. Ocorrências anteriores são mantidas como histórico.
 
 ## Acesso e papéis
 

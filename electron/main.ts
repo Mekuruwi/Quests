@@ -220,10 +220,12 @@ function assertQuestInput(value: unknown) {
   const request = value as Record<string, unknown>;
   if (typeof request.title !== 'string' || !request.title.trim() || request.title.length > 240) throw new Error('Informe um nome de quest com até 240 caracteres.');
   if (!['Única', 'Diária', 'Semanal', 'Mensal'].includes(String(request.recurrence))) throw new Error('Frequência de recorrência inválida.');
+  if (request.weekdays !== undefined && (!Array.isArray(request.weekdays) || request.weekdays.length > 7 || !request.weekdays.every(day => Number.isInteger(day) && day >= 0 && day <= 6) || new Set(request.weekdays).size !== request.weekdays.length)) throw new Error('Os dias da semana selecionados são inválidos.');
+  if (request.recurrence === 'Semanal' && (!Array.isArray(request.weekdays) || request.weekdays.length === 0)) throw new Error('Selecione ao menos um dia para a recorrência semanal.');
   if (typeof request.group !== 'string' || !request.group.trim() || !Array.isArray(request.assignees) || !request.assignees.length || !request.assignees.every(id => typeof id === 'string')) throw new Error('Grupo ou pessoas responsáveis inválidos.');
   if (typeof request.dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(request.dueDate)) throw new Error('Data de vencimento inválida.');
   if (typeof request.description !== 'string' || request.description.length > 4000) throw new Error('Descrição inválida.');
-  return request as unknown as import('./questRepository').QuestInput;
+  return { ...request, weekdays: request.weekdays as number[] | undefined } as unknown as import('./questRepository').QuestInput;
 }
 
 function assertGroupInput(value: unknown): Omit<import('./questRepository').WorkspaceGroup, 'id'> {

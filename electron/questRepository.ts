@@ -12,6 +12,7 @@ export interface QuestInput {
   recurrence: 'Única' | 'Diária' | 'Semanal' | 'Mensal';
   assignees: string[];
   dueDate: string;
+  weekdays?: number[];
 }
 
 export interface QuestRecord extends QuestInput {
@@ -83,11 +84,15 @@ async function ensureSchema() {
     await turso.batch([
       'CREATE TABLE IF NOT EXISTS workspace_groups (id TEXT PRIMARY KEY, title TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT \'\', color TEXT NOT NULL, created_at TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS group_memberships (group_id TEXT NOT NULL, person_id TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(group_id, person_id))',
-      'CREATE TABLE IF NOT EXISTS quest_definitions (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', group_name TEXT NOT NULL, recurrence TEXT NOT NULL, assignee_ids TEXT NOT NULL, color TEXT NOT NULL, created_at TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS quest_definitions (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', group_name TEXT NOT NULL, recurrence TEXT NOT NULL, assignee_ids TEXT NOT NULL, weekdays_json TEXT NOT NULL DEFAULT \'[]\', color TEXT NOT NULL, created_at TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS quest_occurrences (id TEXT PRIMARY KEY, definition_id TEXT NOT NULL, due_date TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(definition_id, due_date))',
       'CREATE TABLE IF NOT EXISTS subquests (id TEXT PRIMARY KEY, occurrence_id TEXT NOT NULL, title TEXT NOT NULL, assignee_ids TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS activity_log (id TEXT PRIMARY KEY, occurrence_id TEXT NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL)',
     ], 'write');
+    const columns = await turso.execute('PRAGMA table_info(quest_definitions)');
+    if (!columns.rows.some(column => column.name === 'weekdays_json')) {
+      await turso.execute("ALTER TABLE quest_definitions ADD COLUMN weekdays_json TEXT NOT NULL DEFAULT '[]'");
+    }
     return;
   }
   if (!db) throw new Error('Banco de dados não conectado.');
@@ -102,6 +107,7 @@ async function ensureSchema() {
   await db.schema.createTable('quest_definitions', table => {
     table.string('id', 36).primary(); table.text('title').notNullable(); table.text('description').notNullable().defaultTo('');
     table.text('group_name').notNullable(); table.string('recurrence', 16).notNullable(); table.text('assignee_ids').notNullable();
+    table.text('weekdays_json').notNullable().defaultTo('[]');
     table.string('color', 16).notNullable(); table.string('created_at', 32).notNullable();
   }).catch(error => { if (!String(error).toLowerCase().includes('already exists')) throw error; });
   await db.schema.createTable('quest_occurrences', table => {
@@ -115,6 +121,9 @@ async function ensureSchema() {
   await db.schema.createTable('activity_log', table => {
     table.string('id', 36).primary(); table.string('occurrence_id', 36).notNullable().index(); table.text('action').notNullable(); table.string('created_at', 32).notNullable();
   }).catch(error => { if (!String(error).toLowerCase().includes('already exists')) throw error; });
+  if (!(await db.schema.hasColumn('quest_definitions', 'weekdays_json'))) await db.schema.alterTable('quest_definitions', table => {
+    table.text('weekdays_json').notNullable().defaultTo('[]');
+  });
 }
 
 function requireDatabase() {
@@ -195,8 +204,8 @@ export async function saveGroup(input: Omit<WorkspaceGroup, 'id'>, groupId?: str
 export async function listQuests(): Promise<QuestRecord[]> {
   requireDatabase();
   const rows = turso
-    ? (await turso.execute('SELECT o.id, o.due_date, o.status, d.title, d.description, d.group_name, d.recurrence, d.assignee_ids, d.color FROM quest_occurrences o JOIN quest_definitions d ON d.id = o.definition_id ORDER BY o.due_date, d.title')).rows as unknown as Array<Record<string, unknown>>
-    : await db!('quest_occurrences as o').join('quest_definitions as d', 'd.id', 'o.definition_id').select('o.id', 'o.due_date', 'o.status', 'd.title', 'd.description', 'd.group_name', 'd.recurrence', 'd.assignee_ids', 'd.color').orderBy('o.due_date').orderBy('d.title') as Array<Record<string, unknown>>;
+    ? (await turso.execute('SELECT o.id, o.due_date, o.status, d.title, d.description, d.group_name, d.recurrence, d.assignee_ids, d.weekdays_json, d.color FROM quest_occurrences o JOIN quest_definitions d ON d.id = o.definition_id ORDER BY o.due_date, d.title')).rows as unknown as Array<Record<string, unknown>>
+    : await db!('quest_occurrences as o').join('quest_definitions as d', 'd.id', 'o.definition_id').select('o.id', 'o.due_date', 'o.status', 'd.title', 'd.description', 'd.group_name', 'd.recurrence', 'd.assignee_ids', 'd.weekdays_json', 'd.color').orderBy('o.due_date').orderBy('d.title') as Array<Record<string, unknown>>;
   const results: QuestRecord[] = [];
   for (const row of rows) {
     const subRows = turso
@@ -206,6 +215,7 @@ export async function listQuests(): Promise<QuestRecord[]> {
     results.push({
       id: String(row.id), title: String(row.title), description: String(row.description || ''), group: String(row.group_name),
       recurrence: String(row.recurrence) as QuestRecord['recurrence'], assignees: json<string[]>(row.assignee_ids, []),
+      weekdays: json<number[]>(row.weekdays_json, []),
       dueDate, due: formatDue(dueDate), status: String(row.status) as QuestRecord['status'], color: String(row.color || 'blue'),
       subtasks: subRows.map(sub => ({ id: String(sub.id), title: String(sub.title), assignees: json<string[]>(sub.assignee_ids, []), done: Boolean(Number(sub.done)) || sub.done === true })),
     });
@@ -216,11 +226,11 @@ export async function listQuests(): Promise<QuestRecord[]> {
 export async function createQuest(input: QuestInput) {
   requireDatabase();
   const definitionId = randomUUID(); const occurrenceId = randomUUID(); const createdAt = new Date().toISOString();
-  const definition = { id: definitionId, title: input.title, description: input.description, group_name: input.group, recurrence: input.recurrence, assignee_ids: JSON.stringify(input.assignees), color: 'blue', created_at: createdAt };
+  const definition = { id: definitionId, title: input.title, description: input.description, group_name: input.group, recurrence: input.recurrence, assignee_ids: JSON.stringify(input.assignees), weekdays_json: JSON.stringify(input.recurrence === 'Semanal' ? input.weekdays || [] : []), color: 'blue', created_at: createdAt };
   const occurrence = { id: occurrenceId, definition_id: definitionId, due_date: input.dueDate, status: 'A fazer', created_at: createdAt };
   if (db) await db.transaction(async transaction => { await transaction('quest_definitions').insert(definition); await transaction('quest_occurrences').insert(occurrence); await transaction('activity_log').insert({ id: randomUUID(), occurrence_id: occurrenceId, action: 'Quest criada', created_at: createdAt }); });
   else await turso!.batch([
-    { sql: 'INSERT INTO quest_definitions (id,title,description,group_name,recurrence,assignee_ids,color,created_at) VALUES (?,?,?,?,?,?,?,?)', args: Object.values(definition) },
+    { sql: 'INSERT INTO quest_definitions (id,title,description,group_name,recurrence,assignee_ids,weekdays_json,color,created_at) VALUES (?,?,?,?,?,?,?,?,?)', args: Object.values(definition) },
     { sql: 'INSERT INTO quest_occurrences (id,definition_id,due_date,status,created_at) VALUES (?,?,?,?,?)', args: Object.values(occurrence) },
     { sql: 'INSERT INTO activity_log (id,occurrence_id,action,created_at) VALUES (?,?,?,?)', args: [randomUUID(), occurrenceId, 'Quest criada', createdAt] },
   ], 'write');
@@ -299,7 +309,7 @@ async function makeNextKnex(transaction: Knex.Transaction, occurrence: Record<st
   if (recurrence === 'Única') return;
   const anchor = await transaction('quest_occurrences').where({ definition_id: definition.id }).min({ anchor_date: 'due_date' }).first();
   const anchorDay = Number(String(anchor?.anchor_date || occurrence.due_date).slice(-2));
-  const nextDate = nextDueDate(String(occurrence.due_date), recurrence as QuestInput['recurrence'], anchorDay);
+  const nextDate = nextDueDate(String(occurrence.due_date), recurrence as QuestInput['recurrence'], anchorDay, json<number[]>(definition.weekdays_json, []));
   const existing = await transaction('quest_occurrences').where({ definition_id: definition.id, due_date: nextDate }).first();
   if (existing) return;
   const occurrenceId = randomUUID();
@@ -310,7 +320,7 @@ async function makeNextKnex(transaction: Knex.Transaction, occurrence: Record<st
 }
 
 async function completeOccurrenceInTurso(occurrenceId: string, transaction: Transaction) {
-  const occurrenceResult = await transaction.execute({ sql: 'SELECT o.id,o.definition_id,o.due_date,o.status,d.recurrence FROM quest_occurrences o JOIN quest_definitions d ON d.id=o.definition_id WHERE o.id=?', args: [occurrenceId] });
+  const occurrenceResult = await transaction.execute({ sql: 'SELECT o.id,o.definition_id,o.due_date,o.status,d.recurrence,d.weekdays_json FROM quest_occurrences o JOIN quest_definitions d ON d.id=o.definition_id WHERE o.id=?', args: [occurrenceId] });
   const occurrence = occurrenceResult.rows[0] as unknown as Record<string, unknown> | undefined;
   if (!occurrence || occurrence.status === 'Concluída') return;
   const createdAt = new Date().toISOString();
@@ -319,7 +329,7 @@ async function completeOccurrenceInTurso(occurrenceId: string, transaction: Tran
   if (occurrence.recurrence !== 'Única') {
     const anchor = await transaction.execute({ sql: 'SELECT MIN(due_date) AS anchor_date FROM quest_occurrences WHERE definition_id=?', args: [String(occurrence.definition_id)] });
     const anchorDay = Number(String(anchor.rows[0]?.anchor_date || occurrence.due_date).slice(-2));
-    const dueDate = nextDueDate(String(occurrence.due_date), String(occurrence.recurrence) as QuestInput['recurrence'], anchorDay);
+    const dueDate = nextDueDate(String(occurrence.due_date), String(occurrence.recurrence) as QuestInput['recurrence'], anchorDay, json<number[]>(occurrence.weekdays_json, []));
     const definitionId = String(occurrence.definition_id); const nextId = randomUUID();
     const prior = await transaction.execute({ sql: 'SELECT title,assignee_ids FROM subquests WHERE occurrence_id=?', args: [occurrenceId] });
     await transaction.execute({ sql: 'INSERT OR IGNORE INTO quest_occurrences (id,definition_id,due_date,status,created_at) VALUES (?,?,?,?,?)', args: [nextId, definitionId, dueDate, 'A fazer', createdAt] });
@@ -333,17 +343,20 @@ async function completeOccurrenceInTurso(occurrenceId: string, transaction: Tran
   }
 }
 
-function nextDueDate(source: string, recurrence: QuestInput['recurrence'], anchorDay = Number(source.slice(-2))) {
+function nextDueDate(source: string, recurrence: QuestInput['recurrence'], anchorDay = Number(source.slice(-2)), weekdays: number[] = []) {
   const [year, month, day] = source.split('-').map(Number);
   let date = new Date(year, month - 1, day); const today = new Date(); today.setHours(0, 0, 0, 0);
   const advance = () => {
     if (recurrence === 'Diária') date.setDate(date.getDate() + 1);
-    else if (recurrence === 'Semanal') date.setDate(date.getDate() + 7);
+    else if (recurrence === 'Semanal') date.setDate(date.getDate() + 1);
     else {
       const targetMonth = date.getMonth() + 1; const targetYear = date.getFullYear() + Math.floor(targetMonth / 12); const normalizedMonth = targetMonth % 12;
       date = new Date(targetYear, normalizedMonth, Math.min(anchorDay, new Date(targetYear, normalizedMonth + 1, 0).getDate()));
     }
   };
-  do { advance(); } while (date <= today);
+  const selectedWeekdays = recurrence === 'Semanal' ? (weekdays.length ? weekdays : [new Date(year, month - 1, day).getDay()]) : [];
+  do {
+    advance();
+  } while (date <= today || (recurrence === 'Semanal' && !selectedWeekdays.includes(date.getDay())));
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
