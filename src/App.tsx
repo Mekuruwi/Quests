@@ -5,6 +5,7 @@ import {
   ListTodo, MoreHorizontal, Plus, Search, Settings2, Shield, Sparkles, Target,
   Users, X, Zap, Moon, Sun, Database, KeyRound, Server, CheckCircle2, AlertCircle, Save, Loader2,
   Minus, Square, Copy, Palette, UserRound, Mail, Send, Monitor,
+  RefreshCw, Download, RotateCw,
 } from 'lucide-react';
 
 type Recurrence = 'Única' | 'Diária' | 'Semanal' | 'Mensal';
@@ -157,8 +158,25 @@ function App() {
     return saved === 'blue' || saved === 'green' || saved === 'rose' ? saved : 'violet';
   });
   const [databaseError, setDatabaseError] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>({
+    version: '—',
+    status: 'unsupported',
+    message: 'Atualizações estão disponíveis somente no app instalado.',
+  });
   useEffect(() => { localStorage.setItem('questly.theme', dark ? 'dark' : 'light'); }, [dark]);
   useEffect(() => { localStorage.setItem('questly.accent', accent); }, [accent]);
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    const unsubscribe = window.electronAPI.updates.onStatus(setUpdateStatus);
+    window.electronAPI.updates.getStatus()
+      .then(setUpdateStatus)
+      .catch(error => setUpdateStatus({
+        version: '—',
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível carregar o estado das atualizações.',
+      }));
+    return unsubscribe;
+  }, []);
   useEffect(() => {
     if (!window.electronAPI) return;
     window.electronAPI.profile.get()
@@ -273,6 +291,39 @@ function App() {
       flash(error instanceof Error ? error.message : 'Não foi possível abrir o convite no aplicativo de e-mail.');
     }
   };
+  const checkUpdates = async () => {
+    if (!window.electronAPI) return;
+    try { setUpdateStatus(await window.electronAPI.updates.check()); }
+    catch (error) {
+      setUpdateStatus(current => ({
+        ...current,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível verificar atualizações.',
+      }));
+    }
+  };
+  const downloadUpdate = async () => {
+    if (!window.electronAPI) return;
+    try { setUpdateStatus(await window.electronAPI.updates.download()); }
+    catch (error) {
+      setUpdateStatus(current => ({
+        ...current,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível baixar a atualização.',
+      }));
+    }
+  };
+  const installUpdate = async () => {
+    if (!window.electronAPI) return;
+    try { await window.electronAPI.updates.install(); }
+    catch (error) {
+      setUpdateStatus(current => ({
+        ...current,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível instalar a atualização.',
+      }));
+    }
+  };
   const completeWithoutSubquests = async (questId: string) => {
     if (window.electronAPI) {
       const quest = quests.find(item => item.id === questId);
@@ -335,7 +386,7 @@ function App() {
         </>}
         {page === 'Calendário' && <CalendarPage quests={quests} onOpen={id => setDetail(id)} onCreate={date => openCreateQuest(date)} />}
         {page === 'Grupos' && <GroupsPage groups={accessibleGroups} quests={quests} role={role} profile={profile} onAdd={() => { setEditingGroup(null); setGroupModal(true); }} onEdit={group => { setEditingGroup(group); setGroupModal(true); }} onInvite={group => setInviteGroup(group)} />}
-        {page === 'Configurações' && <SettingsPage profile={profile} profileError={profileError} onSaveProfile={saveProfile} dark={dark} setDark={setDark} accent={accent} setAccent={setAccent} />}
+        {page === 'Configurações' && <SettingsPage profile={profile} profileError={profileError} onSaveProfile={saveProfile} dark={dark} setDark={setDark} accent={accent} setAccent={setAccent} updateStatus={updateStatus} onCheckUpdates={checkUpdates} onDownloadUpdate={downloadUpdate} onInstallUpdate={installUpdate} />}
         {page === 'Relatórios' && <ReportsPage quests={quests} groups={groups} />}
       </div>
     </main>
@@ -401,7 +452,7 @@ function ProfileSetupPage({ error, onSave }: { error: string; onSave: (profile: 
   </main>;
 }
 
-function SettingsPage({ profile, profileError, onSaveProfile, dark, setDark, accent, setAccent }: {
+function SettingsPage({ profile, profileError, onSaveProfile, dark, setDark, accent, setAccent, updateStatus, onCheckUpdates, onDownloadUpdate, onInstallUpdate }: {
   profile: UserProfileView;
   profileError: string;
   onSaveProfile: (profile: { name: string; nickname: string; email: string }) => Promise<boolean>;
@@ -409,8 +460,12 @@ function SettingsPage({ profile, profileError, onSaveProfile, dark, setDark, acc
   setDark: (dark: boolean) => void;
   accent: AppearanceAccent;
   setAccent: (accent: AppearanceAccent) => void;
+  updateStatus: AppUpdateStatus;
+  onCheckUpdates: () => void;
+  onDownloadUpdate: () => void;
+  onInstallUpdate: () => void;
 }) {
-  const [section, setSection] = useState<'appearance' | 'profile' | 'database'>('appearance');
+  const [section, setSection] = useState<'appearance' | 'profile' | 'database' | 'updates'>('appearance');
   const [name, setName] = useState(profile.name);
   const [nickname, setNickname] = useState(profile.nickname);
   const [email, setEmail] = useState(profile.email);
@@ -427,6 +482,7 @@ function SettingsPage({ profile, profileError, onSaveProfile, dark, setDark, acc
       <button className={section === 'appearance' ? 'active' : ''} onClick={() => setSection('appearance')}><Palette size={16}/> Aparência</button>
       <button className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}><UserRound size={16}/> Meu perfil</button>
       <button className={section === 'database' ? 'active' : ''} onClick={() => setSection('database')}><Database size={16}/> Banco de dados</button>
+      <button className={section === 'updates' ? 'active' : ''} onClick={() => setSection('updates')}><RefreshCw size={16}/> Atualizações</button>
     </nav><section className="settings-section">
       {section === 'appearance' && <div className="settings-card appearance-card"><div className="settings-card-head"><div className="settings-icon"><Palette size={18}/></div><div><h2>Aparência</h2><p>Escolha o tema e a cor de destaque do Questly.</p></div></div>
         <h3 className="settings-section-label">Tema</h3><div className="theme-options">
@@ -445,6 +501,34 @@ function SettingsPage({ profile, profileError, onSaveProfile, dark, setDark, acc
         <div className="profile-settings-foot"><small>O perfil não substitui login/autenticação individual.</small><button type="submit" className="primary-button" disabled={busy}>{busy ? <Loader2 className="spin" size={14}/> : <Save size={14}/>} Salvar perfil</button></div>
       </form>}
       {section === 'database' && <DatabaseSettingsPage/>}
+      {section === 'updates' && <div className="settings-card update-settings-card">
+        <div className="settings-card-head"><div className="settings-icon"><RefreshCw size={18}/></div><div><h2>Atualizações</h2><p>Versão do app e novas melhorias do Questly.</p></div></div>
+        <div className="update-version-row"><span>Versão instalada</span><b>{updateStatus.version}</b></div>
+        {updateStatus.availableVersion && <div className="update-version-row"><span>Nova versão</span><b>{updateStatus.availableVersion}</b></div>}
+        <div className={`update-status ${updateStatus.status === 'error' ? 'error' : updateStatus.status === 'available' || updateStatus.status === 'downloaded' ? 'success' : ''}`}>
+          {updateStatus.status === 'checking' || updateStatus.status === 'downloading'
+            ? <RefreshCw className="spin" size={16}/>
+            : updateStatus.status === 'available' || updateStatus.status === 'downloaded' || updateStatus.status === 'not-available'
+              ? <CheckCircle2 size={16}/>
+              : updateStatus.status === 'error' ? <AlertCircle size={16}/> : <Monitor size={16}/>}
+          <span>{updateStatus.status === 'idle' ? 'Pronto para verificar atualizações.'
+            : updateStatus.status === 'checking' ? 'Verificando se há uma nova versão...'
+              : updateStatus.status === 'available' ? 'Uma nova versão está disponível para baixar.'
+                : updateStatus.status === 'not-available' ? 'Você está usando a versão mais recente.'
+                  : updateStatus.status === 'downloading' ? `Baixando atualização${typeof updateStatus.percent === 'number' ? ` · ${Math.round(updateStatus.percent)}%` : '...'}`
+                    : updateStatus.status === 'downloaded' ? 'Atualização baixada. Reinicie o Questly para instalar.'
+                      : updateStatus.message || 'Não foi possível consultar atualizações.'}</span>
+        </div>
+        {updateStatus.status === 'downloading' && <div className="update-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(updateStatus.percent || 0)}><i style={{ width: `${Math.max(0, Math.min(100, updateStatus.percent || 0))}%` }}/></div>}
+        <div className="update-actions">
+          {updateStatus.status === 'available'
+            ? <button className="primary-button" onClick={onDownloadUpdate}><Download size={15}/> Baixar atualização</button>
+            : updateStatus.status === 'downloaded'
+              ? <button className="primary-button" onClick={onInstallUpdate}><RotateCw size={15}/> Reiniciar e instalar</button>
+              : <button className="primary-button" onClick={onCheckUpdates} disabled={!window.electronAPI || updateStatus.status === 'checking' || updateStatus.status === 'downloading'}><RefreshCw className={updateStatus.status === 'checking' ? 'spin' : ''} size={15}/> Verificar atualizações</button>}
+        </div>
+        <div className="appearance-note"><Monitor size={15}/> O app instalado também verifica atualizações ao iniciar. Builds de desenvolvimento não consultam releases.</div>
+      </div>}
     </section></div>
   </div>;
 }

@@ -28,6 +28,13 @@ declare global {
   interface UserProfileView {
     name: string; nickname: string; email: string; role: 'Master';
   }
+  interface AppUpdateStatus {
+    version: string;
+    status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'unsupported';
+    availableVersion?: string;
+    percent?: number;
+    message?: string;
+  }
   interface Window {
     electronAPI?: {
       database: {
@@ -59,6 +66,13 @@ declare global {
       };
       invites: {
         compose: (request: { email: string; group: string; quest?: string }) => Promise<{ opened: boolean }>;
+      };
+      updates: {
+        getStatus: () => Promise<AppUpdateStatus>;
+        check: () => Promise<AppUpdateStatus>;
+        download: () => Promise<AppUpdateStatus>;
+        install: () => Promise<void>;
+        onStatus: (callback: (status: AppUpdateStatus) => void) => () => void;
       };
     };
   }

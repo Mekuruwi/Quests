@@ -50,6 +50,12 @@ Para gerar um instalador local:
 npm run electron:build
 ```
 
+## Versionamento e atualizações
+
+O número exibido pelo app vem de `version` em `package.json`; mantenha também `package-lock.json` sincronizado. Em **Configurações > Atualizações**, é possível conferir a versão instalada, verificar novas versões, acompanhar o download e reiniciar para instalar. O app instalado também verifica atualizações ao iniciar.
+
+As atualizações são distribuídas pelos GitHub Releases do repositório `Mekuruwi/Quests`. Para publicar, aumente a versão, envie a tag `v<versão>` correspondente e aguarde o workflow anexar os instaladores e metadados de atualização para cada plataforma. Builds de desenvolvimento não consultam releases.
+
 ## CI/CD e releases
 
 O workflow do GitHub Actions em `.github/workflows/ci-cd.yml` verifica segredos e compila o app em pull requests e pushes para `main`. Depois, gera instaladores nos runners Windows, macOS e Linux e os publica como artefatos da execução por 14 dias.

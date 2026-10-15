@@ -16,32 +16,59 @@
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "better-sqlite3": "^11.0.0",
+    "electron-updater": "^6.8.9",
     "knex": "^3.3.0",
+    "lucide-react": "^0.344.0",
     "mysql2": "^3.24.4",
     "pg": "^8.23.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "lucide-react": "^0.344.0",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@types/node": "^20.11.30",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
-    "@types/node": "^20.11.30",
-    "electron": "^29.1.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^29.1.0",
     "electron-builder": "^26.15.3",
+    "typescript": "^5.4.2",
     "vite": "^5.1.6",
-    "vite-plugin-electron": "^0.28.4",
-    "typescript": "^5.4.2"
+    "vite-plugin-electron": "^0.28.4"
   },
   "build": {
     "appId": "com.quests.app",
     "productName": "Questly",
-    "files": ["dist/**/*", "dist-electron/main.js", "electron/preload.cjs", "package.json"],
-    "win": { "target": ["nsis"] },
-    "mac": { "target": ["dmg", "zip"] },
-    "linux": { "target": ["AppImage"] },
-    "directories": { "output": "dist-electron/installer" }
+    "files": [
+      "dist/**/*",
+      "dist-electron/main.js",
+      "electron/preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Mekuruwi",
+      "repo": "Quests",
+      "releaseType": "release"
+    },
+    "directories": {
+      "output": "dist-electron/installer"
+    }
   }
 }

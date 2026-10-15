@@ -35,4 +35,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   invites: {
     compose: request => ipcRenderer.invoke('invites:compose', request),
   },
+  updates: {
+    getStatus: () => ipcRenderer.invoke('updates:getStatus'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    download: () => ipcRenderer.invoke('updates:download'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onStatus: callback => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on('updates:status', listener);
+      return () => ipcRenderer.removeListener('updates:status', listener);
+    },
+  },
 });

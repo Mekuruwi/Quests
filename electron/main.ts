@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import knex from 'knex';
@@ -23,6 +24,46 @@ import {
 import { loadUserProfile, saveUserProfile } from './userProfile';
 
 let mainWindow: BrowserWindow | null = null;
+type UpdateStatus = {
+  version: string;
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'unsupported';
+  availableVersion?: string;
+  percent?: number;
+  message?: string;
+};
+
+let updateStatus: UpdateStatus = {
+  version: app.getVersion(),
+  status: app.isPackaged ? 'idle' : 'unsupported',
+  message: app.isPackaged ? undefined : 'A verificação está disponível somente na versão instalada do Questly.',
+};
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function publishUpdateStatus(status: UpdateStatus) {
+  updateStatus = status;
+  mainWindow?.webContents.send('updates:status', updateStatus);
+}
+
+autoUpdater.on('checking-for-update', () => {
+  publishUpdateStatus({ version: app.getVersion(), status: 'checking' });
+});
+autoUpdater.on('update-available', info => {
+  publishUpdateStatus({ version: app.getVersion(), status: 'available', availableVersion: info.version });
+});
+autoUpdater.on('update-not-available', () => {
+  publishUpdateStatus({ version: app.getVersion(), status: 'not-available', message: 'Você está usando a versão mais recente.' });
+});
+autoUpdater.on('download-progress', progress => {
+  publishUpdateStatus({ version: app.getVersion(), status: 'downloading', percent: progress.percent });
+});
+autoUpdater.on('update-downloaded', info => {
+  publishUpdateStatus({ version: app.getVersion(), status: 'downloaded', availableVersion: info.version });
+});
+autoUpdater.on('error', error => {
+  publishUpdateStatus({ version: app.getVersion(), status: 'error', message: error.message });
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -123,6 +164,35 @@ handle('window:toggleMaximize', () => {
 });
 handle('window:close', () => mainWindow?.close());
 handle('window:isMaximized', () => Boolean(mainWindow?.isMaximized()));
+handle('updates:getStatus', () => updateStatus);
+handle('updates:check', async () => {
+  if (!app.isPackaged) {
+    publishUpdateStatus({ version: app.getVersion(), status: 'unsupported', message: 'A verificação está disponível somente na versão instalada do Questly.' });
+    return updateStatus;
+  }
+  publishUpdateStatus({ version: app.getVersion(), status: 'checking' });
+  try {
+    await autoUpdater.checkForUpdates();
+    return updateStatus;
+  } catch (error) {
+    publishUpdateStatus({ version: app.getVersion(), status: 'error', message: error instanceof Error ? error.message : 'Não foi possível verificar atualizações.' });
+    throw error;
+  }
+});
+handle('updates:download', async () => {
+  if (updateStatus.status !== 'available') throw new Error('Não há atualização disponível para baixar.');
+  try {
+    await autoUpdater.downloadUpdate();
+    return updateStatus;
+  } catch (error) {
+    publishUpdateStatus({ version: app.getVersion(), status: 'error', message: error instanceof Error ? error.message : 'Não foi possível baixar a atualização.' });
+    throw error;
+  }
+});
+handle('updates:install', () => {
+  if (updateStatus.status !== 'downloaded') throw new Error('A atualização ainda não foi baixada.');
+  autoUpdater.quitAndInstall();
+});
 handle('invites:compose', async value => {
   const request = value as { email?: unknown; group?: unknown; quest?: unknown } | null;
   if (!request || typeof request.email !== 'string' || request.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email.trim()) ||
@@ -200,6 +270,13 @@ async function testConnection(config: Awaited<ReturnType<typeof loadDatabaseConf
 
 app.whenReady().then(() => {
   createWindow();
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void autoUpdater.checkForUpdates().catch(error => {
+        publishUpdateStatus({ version: app.getVersion(), status: 'error', message: error instanceof Error ? error.message : 'Não foi possível verificar atualizações.' });
+      });
+    }, 5000);
+  }
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 

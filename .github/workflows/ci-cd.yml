@@ -56,15 +56,23 @@ jobs:
         include:
           - os: windows-latest
             artifact-name: windows-installer
-            artifact-path: dist-electron/installer/*.exe
+            artifact-path: |
+              dist-electron/installer/*.exe
+              dist-electron/installer/*.exe.blockmap
+              dist-electron/installer/latest.yml
           - os: macos-latest
             artifact-name: macos-installer
             artifact-path: |
               dist-electron/installer/*.dmg
               dist-electron/installer/*.zip
+              dist-electron/installer/*.blockmap
+              dist-electron/installer/latest-mac.yml
           - os: ubuntu-latest
             artifact-name: linux-installer
-            artifact-path: dist-electron/installer/*.AppImage
+            artifact-path: |
+              dist-electron/installer/*.AppImage
+              dist-electron/installer/*.blockmap
+              dist-electron/installer/latest-linux.yml
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
