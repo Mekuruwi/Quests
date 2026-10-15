@@ -3,12 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "start": "npm run build && electron .",
+    "prestart": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps",
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && tsc -p tsconfig.electron.json && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "electron:build": "npm run build && electron-builder --publish never"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "better-sqlite3": "^11.0.0",
+    "knex": "^3.3.0",
+    "mysql2": "^3.24.4",
+    "pg": "^8.23.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "lucide-react": "^0.344.0",
@@ -17,8 +27,21 @@
   "devDependencies": {
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
+    "@types/node": "^20.11.30",
+    "electron": "^29.1.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "electron-builder": "^26.15.3",
     "vite": "^5.1.6",
+    "vite-plugin-electron": "^0.28.4",
     "typescript": "^5.4.2"
+  },
+  "build": {
+    "appId": "com.quests.app",
+    "productName": "Questly",
+    "files": ["dist/**/*", "dist-electron/main.js", "electron/preload.cjs", "package.json"],
+    "win": { "target": ["nsis"] },
+    "mac": { "target": ["dmg", "zip"] },
+    "linux": { "target": ["AppImage"] },
+    "directories": { "output": "dist-electron/installer" }
   }
 }

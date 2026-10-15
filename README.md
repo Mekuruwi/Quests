@@ -1,30 +1,49 @@
 # Questly
 
-Aplicação desktop para organizar tarefas recorrentes como quests, com grupos de pessoas, subquests e atribuições compartilhadas. O shell segue a referência `C:\Sites\Funil versão 2` (menu lateral, dashboard, temas e formulários em modal).
+Aplicativo desktop Electron para organizar quests recorrentes, grupos, responsáveis e subquests. A interface segue a estrutura visual do `C:\Sites\Funil versão 2`.
 
-## Demonstração da interface
-
-A primeira entrega é um protótipo navegável com dados fictícios em memória. Permite explorar o dashboard, filtrar quests, criar uma quest, abrir seu detalhe, atribuir várias pessoas a uma subquest e concluir etapas. Ao concluir todas as subquests, o protótipo gera a ocorrência seguinte conforme a frequência escolhida.
-
-Esta demonstração ainda não persiste dados e não autentica usuários. Login Google, convites, permissões reais por grupo, histórico e conexão com um banco externo ainda precisam de implementação e configuração. O selo “Demonstração” na interface indica esse estado.
-
-## Executar
+## Iniciar
 
 Requisitos: Node.js 20 ou superior e npm.
 
 ```bash
 npm install
-npm run dev
+npm start
 ```
 
-Para gerar o bundle de produção da interface:
+`npm start` compila e abre a janela do aplicativo Electron. Durante desenvolvimento, `npm run dev` inicia Vite com Electron.
+
+## Banco de dados
+
+Abra **Configurações > Banco de dados**, selecione o provedor e informe a conexão/chave. O app conecta diretamente ao banco escolhido; não exige hospedar um servidor próprio do Questly. As credenciais ficam no armazenamento seguro do sistema operacional e não são enviadas ao renderer.
+
+Provedores disponíveis: SQLite local, PostgreSQL, Supabase/PostgreSQL, MySQL/MariaDB e Turso/libSQL. Teste a conexão antes de salvar. As tabelas de quests, ocorrências, subquests e histórico são criadas automaticamente no banco selecionado.
+
+## Fluxos disponíveis
+
+- Criar quests únicas, diárias, semanais ou mensais.
+- Adicionar subquests e atribuir cada uma a várias pessoas.
+- Concluir subquests; ao concluir a última, concluir a ocorrência e gerar a próxima no banco.
+- Concluir diretamente uma quest sem subquests.
+- Criar grupos persistentes, gerenciar participantes e administradores demonstrativos, consultar calendário e relatórios.
+- Filtrar por grupo e prazo e alternar a ordenação da lista.
+
+A frequência mensal preserva o dia escolhido e ajusta para o último dia do mês quando necessário. Ocorrências anteriores são mantidas como histórico.
+
+## Acesso e papéis
+
+Esta versão usa a credencial configurada para conectar cada instalação ao banco. Ainda não há login individual nem autorização por papel aplicada no banco; o controle Master/Admin e o cadastro real de membros precisam ser finalizados antes de usar dados que exijam segregação por pessoa/grupo. As pessoas apresentadas atualmente na interface são dados de demonstração.
+
+## Arquitetura
+
+- React + TypeScript + Vite na interface.
+- Electron com `contextIsolation`, sandbox e Node desativado no renderer.
+- API estreita via preload/IPC; validação e conexão com banco no processo principal.
+- Knex para SQLite, PostgreSQL/Supabase e MySQL; cliente libSQL para Turso.
+- Leia [docs/agents.md](docs/agents.md) para o fluxo do produto, regras e limitações ainda pendentes.
+
+Para gerar um instalador local:
 
 ```bash
-npm run build
+npm run electron:build
 ```
-
-## Fluxo e arquitetura proposta
-
-Consulte [docs/fluxo-produto.md](docs/fluxo-produto.md) para as regras de acesso, grupos, recorrência, subquests, dados e análise por tópico. A proposta de arquitetura mantém o padrão da referência: React/TypeScript, estado de interface isolado, operações por uma camada confiável e adaptadores de banco.
-
-A conexão remota ainda precisa de um provedor e credenciais de ambiente. Não distribuir credenciais privilegiadas do banco dentro do app desktop. Para uso multiusuário, a autorização deve ser aplicada no banco ou por um serviço confiável, mesmo quando a identidade vem do Google.

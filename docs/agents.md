@@ -8,7 +8,7 @@ Organizar tarefas recorrentes como quests. Uma quest pode ser compartilhada por 
 
 ## Base visual e técnica
 
-- **Shell da aplicação:** seguir o padrão desktop Electron + React + TypeScript. Barra de título própria e menu lateral recolhível; manter páginas em área principal com rolagem independente.
+- **Shell da aplicação:** seguir o padrão desktop Electron + React + TypeScript. O programa roda instalado/localmente; não hospeda um servidor web. Barra de título própria e menu lateral recolhível; manter páginas em área principal com rolagem independente.
 - **Navegação:** adaptar o menu da referência para Dashboard, Minhas quests, Grupos, Calendário, Relatórios e Configurações. Exibir Gestão de usuários e grupos conforme o papel. Admins podem administrar vários grupos atribuídos.
 - **Páginas:** usar dashboard com cards de resumo e listas/quadros para trabalho; filtros e busca ficam no cabeçalho da lista. Criar/editar quest em modal por etapas, seguindo o padrão dos formulários existentes. Detalhe da quest pode ser página ou modal amplo.
 - **Estilo:** reutilizar tokens CSS (`--bg-primary`, `--bg-secondary`, `--text-primary`, `--text-secondary`, `--border-color`, `--accent-color`), suporte claro/escuro e temas prontos. Usar espaçamento, bordas, cartões e ícones Lucide do app de referência.
@@ -16,9 +16,9 @@ Organizar tarefas recorrentes como quests. Uma quest pode ser compartilhada por 
 - **Persistência:** seguir a abstração `DatabaseAdapter`/`KnexDatabaseAdapter` e a `DatabaseFactory` da referência. SQLite local é o padrão; provedores PostgreSQL, Supabase, MySQL/MariaDB e Turso também estão disponíveis. As novas entidades devem integrar todos os adaptadores suportados ou documentar explicitamente qualquer limitação.
 - **Segurança Electron:** operações de dados passam por IPC com validação no processo principal, preservando isolamento de contexto, sandbox e Node desativado no renderer.
 
-**Arquitetura multiusuário definida:** o app continua desktop e os dados ficam em um banco externo compartilhado. Login Google é a primeira opção a avaliar. Para Electron, usar OAuth/OIDC com fluxo de desktop seguro (Authorization Code + PKCE), armazenar tokens com proteção do sistema operacional e mapear a identidade Google a um usuário interno e seus papéis. Se login Google não for viável, a alternativa é cadastro de usuários/chaves configuráveis na inicialização. Chaves são credenciais e precisam ser individuais, revogáveis e armazenadas com hash; uma chave compartilhada embutida no app não autentica nem autoriza usuários de forma segura.
+**Arquitetura escolhida:** o app é desktop Electron e se conecta diretamente ao banco escolhido pelo usuário; não há hospedagem de um servidor do app. A conexão é configurada em cada instalação e os segredos ficam criptografados com o armazenamento seguro do sistema operacional. O app suporta SQLite local, PostgreSQL, Supabase/PostgreSQL, MySQL/MariaDB e Turso/libSQL. Usuários do mesmo workspace compartilham dados conectando-se ao mesmo banco.
 
-Como o app desktop acessa um banco compartilhado, nunca embutir uma credencial privilegiada do banco no renderer ou distribuir uma senha de banco comum a todos os usuários. Para manter o banco como único serviço externo, escolher um provedor com autenticação e políticas por usuário (por exemplo, serviço PostgreSQL compatível com JWT/RLS) ou restringir o acesso ao banco por uma camada confiável. O processo principal Electron pode proteger a fronteira local, mas sozinho não protege credenciais compartilhadas de um cliente instalado em máquinas diferentes. Toda operação deve aplicar autorização por grupo e papel.
+O segredo de conexão autentica a instalação no banco, mas não identifica automaticamente a pessoa usando o app. Perfis e papéis Master/Admin/Membro continuam como regras de produto; para impor esses papéis de forma segura entre instalações, o banco precisa oferecer credenciais/políticas individuais ou o app precisa de uma chave de usuário por pessoa validada em armazenamento compartilhado. A credencial de banco nunca é exposta ao renderer. Nesta versão, os papéis e membros ainda são demonstração e não constituem controle de acesso individual.
 
 ## Papéis e acesso
 
@@ -28,30 +28,31 @@ Como o app desktop acessa um banco compartilhado, nunca embutir uma credencial p
 | Admin (responsável por grupos) | Gerencia membros e quests de todos os grupos sob sua responsabilidade; pode atribuir responsáveis e acompanhar progresso. |
 | Membro | Consulta quests dos grupos dos quais participa, executa as tarefas atribuídas e atualiza as próprias subquests. |
 
-O acesso deve ser validado no servidor por ação e por grupo. Esconder uma opção na interface não substitui a validação de permissão.
+O acesso ao banco é validado pela credencial configurada. O controle fino por ação e por grupo requer identidade de usuário reconhecida pelo banco e permanece pendente; esconder uma opção na interface não substitui a validação de permissão.
 
 ## Mapa de navegação
 
 ```mermaid
 flowchart TD
-    A[Abrir app] --> B{Sessão válida?}
-    B -- Não --> C[Login]
-    C --> D{Google ou chave válida?}
-    D -- Não --> C
-    D -- Sim --> E[Início / Minhas quests]
-    B -- Sim --> E
-    E --> F[Quadro do grupo]
-    E --> G[Minhas tarefas]
-    E --> H[Calendário]
-    E --> I[Notificações]
-    F --> J[Detalhe da quest]
+    A[Abrir app Electron] --> B{Banco configurado?}
+    B -- Não --> C[Configurações do banco]
+    C --> D[Testar credencial]
+    D --> E{Conexão válida?}
+    E -- Não --> C
+    E -- Sim --> F[Início / Minhas quests]
+    B -- Sim --> F
+    F --> G[Quadro do grupo]
+    F --> H[Minhas tarefas]
+    F --> I[Calendário]
+    F --> U[Notificações]
+    G --> J[Detalhe da quest]
     G --> J
     H --> J
     J --> K[Concluir subquest]
     K --> L{Todas as subquests obrigatórias concluídas?}
     L -- Não --> J
     L -- Sim --> M[Concluir quest principal]
-    E --> N{Master ou Admin?}
+    F --> N{Master ou Admin?}
     N -- Sim --> O[Gestão]
     O --> P[Grupos e membros dos grupos autorizados]
     O --> Q[Criar ou editar quest]
@@ -61,7 +62,7 @@ flowchart TD
 
 ## Fluxo principal
 
-1. **Entrar:** login por e-mail e senha; recuperação de senha; convite aceito pelo usuário. Após autenticar, abrir “Minhas quests”.
+1. **Abrir o app:** conectar usando o banco configurado neste computador. Se ainda não houver configuração válida, abrir Configurações para selecionar o provedor, informar a credencial e testar a conexão. Quando conectar, abrir “Minhas quests”.
 2. **Encontrar trabalho:** início com tarefas vencidas, de hoje, próximas e concluídas recentemente. Filtros por grupo, período, responsável e estado. Alternar entre lista, quadro e calendário.
 3. **Abrir uma quest:** mostrar descrição, grupo, responsáveis, prazo, recorrência, histórico e lista de subquests. Membro vê ações permitidas para si; Admin vê controles do grupo.
 4. **Executar subquest:** todos os responsáveis atribuídos veem a mesma subquest compartilhada. Qualquer um deles pode concluí-la uma única vez; registrar quem concluiu e quando. A quest principal recalcula o progresso imediatamente. Se o produto precisar que cada pessoa confirme individualmente, isso será uma opção futura de política de conclusão.
@@ -139,9 +140,9 @@ IDs, datas e tipos devem ser compatíveis com todos os adaptadores que o app ofe
 
 ### 1. Acesso ao workspace
 
-O usuário abre o app, entra com Google ou com credencial individual configurada pelo Master e recebe apenas os grupos vinculados ao seu cadastro. O Master tem escopo global; Admins podem ter vínculo administrativo com vários grupos; membros têm acesso aos grupos em que foram incluídos. A primeira configuração precisa criar o workspace e seu Master, sem uma conta mestre padrão compartilhada.
+O usuário abre o app instalado, configura a credencial do banco uma vez por computador e testa a conexão. Todas as instalações autorizadas apontam para o mesmo banco externo. O Master tem escopo global; Admins podem ter vínculo administrativo com vários grupos; membros veem os grupos em que participam. O acesso individual precisa ser acrescentado se a equipe precisar de auditoria por pessoa e restrições por papel.
 
-**Resultado esperado:** sessão associada a um usuário interno, grupos autorizados carregados e ações protegidas pela permissão no banco/serviço de autenticação.
+**Resultado esperado:** banco compartilhado conectado e credencial guardada localmente com proteção do sistema operacional. A credencial do banco identifica o app/instalação; ainda não substitui login ou chave individual.
 
 ### 2. Dashboard e foco diário
 
@@ -175,16 +176,19 @@ Ao concluir uma ocorrência recorrente, criar a próxima com subquests abertas e
 
 ### 7. Dados e segurança
 
-O renderer envia comandos pela API do preload e IPC validado; a camada de domínio aplica regras e a camada de banco mantém as relações e transações. Para o cenário multiusuário, a credencial de cada cliente precisa ser limitada a seu usuário/grupos. A autenticação Google ou as chaves configuráveis identificam pessoas, mas as políticas de banco também precisam impedir leitura e escrita fora do escopo.
+O renderer envia comandos pela API do preload e IPC validado; a camada de domínio aplica regras e a camada de banco mantém as relações e transações. Cada computador armazena seu segredo com `safeStorage`. Para distinguir usuários e aplicar escopo por grupo, definir chaves individuais no banco ou política de acesso por usuário antes de uso com dados restritos.
 
 **Resultado esperado:** cliente não recebe segredo privilegiado compartilhado; transições e geração recorrente são atômicas; conexões e tokens são armazenados com proteção adequada.
 
 ## Estado da criação
 
-O projeto contém uma **demonstração navegável da interface** com dados em memória para revisar o dashboard, listas, criação de quest, detalhe e atribuição de múltiplos responsáveis. Login real, convites, persistência, permissões no banco, criação transacional e auditoria ainda não estão conectados. Não usar os dados da demonstração como registros persistentes ou como autenticação.
+O app Electron já permite configurar e testar os provedores de banco, persistir quests/ocorrências/subquests e gerar recorrências dentro das transações disponíveis. Calendário mensal, filtros por grupo/prazo, ordenação, relatórios por grupo e gerenciamento de grupos também estão ligados aos dados. Grupos, membros e vínculo de administrador são persistidos no banco.
+
+**Limite de segurança:** as pessoas disponíveis continuam sendo identidades de demonstração (`ana`, `bruno`, `carol`, `diego`, `luiza`). Os papéis Master/Admin e os vínculos de grupo ainda não autenticam uma pessoa nem impõem autorização no banco; não use a seleção visual como controle de acesso. Login/recuperação, convites reais, credenciais individuais, trilha de auditoria de mudanças de grupo e autorização por pessoa/grupo continuam pendentes. A remoção de pessoas do grupo preserva as atribuições existentes, então reatribua tarefas abertas antes de retirar o vínculo.
+
+As ocorrências mensais mantêm o dia âncora da primeira data, ajustando meses curtos sem deslocar a agenda. A geração continua avançando a partir do prazo planejado até a próxima data futura, sem criar uma cascata de atrasos.
 
 ## Decisões pendentes antes de implementar
 
-- Se a conclusão acontecer depois do vencimento planejado, a próxima ocorrência mantém a cadência original ou conta o intervalo a partir da conclusão? A proposta atual mantém a cadência e calcula a próxima data futura.
-- No modo de fallback por chaves configuráveis, elas serão senhas individuais por usuário ou códigos de convite que cada pessoa troca por uma credencial individual? A recomendação é código de convite + credencial individual.
-- Qual provedor de banco/autenticação atenderá o modo remoto multiusuário? A referência oferece adaptadores de banco, mas não implementa identidade, tokens ou autorização por usuário.
+- A equipe quer uma chave individual por pessoa além da credencial do banco? Essa chave permitiria atribuição e autoria por membro, mas precisa ser armazenada/validada no banco para valer entre computadores.
+- Qual provedor será usado em produção? Todos os adaptadores estão disponíveis, mas a conexão real requer host/URL, usuário e credencial fornecidos pelo administrador do banco.
