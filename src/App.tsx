@@ -207,6 +207,9 @@ function App() {
   const notifications = openQuests.filter(q => q.dueDate <= todayString()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   const completedCount = quests.filter(q => q.status === 'Concluída').length;
   const collaboratorCount = new Set(quests.flatMap(q => [...q.assignees, ...q.subtasks.flatMap(subquest => subquest.assignees)])).size;
+  const currentHour = new Date().getHours();
+  const greeting = currentHour < 12 ? 'Bom dia' : currentHour < 18 ? 'Boa tarde' : 'Boa noite';
+  const greetingIcon = currentHour < 18 ? '☀️' : '🌙';
   const filtered = useMemo(() => quests.filter(q =>
     (dueFilter === 'Concluídas' ? q.status === 'Concluída' : q.status !== 'Concluída') &&
     (filter === 'Todos os grupos' || q.group === filter) &&
@@ -229,7 +232,9 @@ function App() {
       const quest = quests.find(item => item.id === questId);
       try {
         setQuests(await window.electronAPI.quests.completeSubquest({ occurrenceId: questId, subquestId: subId }));
-        if (quest?.subtasks.filter(item => !item.done).length === 1) flash(quest.recurrence === 'Única' ? 'Quest concluída e salva no banco.' : `Quest concluída. A próxima ocorrência ${quest.recurrence.toLowerCase()} foi salva no banco.`);
+        if (quest?.subtasks.filter(item => !item.done).length === 1) {
+          flash(quest.recurrence === 'Única' ? 'Quest concluída e salva no banco.' : `Quest concluída. A próxima ocorrência ${quest.recurrence.toLowerCase()} foi salva no banco.`);
+        }
       } catch (error) { flash(error instanceof Error ? error.message : 'Falha ao salvar a subquest.'); }
       return;
     }
@@ -332,7 +337,10 @@ function App() {
   const completeWithoutSubquests = async (questId: string) => {
     if (window.electronAPI) {
       const quest = quests.find(item => item.id === questId);
-      try { setQuests(await window.electronAPI.quests.complete({ occurrenceId: questId })); flash(quest?.recurrence === 'Única' ? 'Quest concluída e salva no banco.' : `Quest concluída. A próxima ocorrência ${quest?.recurrence.toLowerCase()} foi salva no banco.`); }
+      try {
+        setQuests(await window.electronAPI.quests.complete({ occurrenceId: questId }));
+        flash(quest?.recurrence === 'Única' ? 'Quest concluída e salva no banco.' : `Quest concluída. A próxima ocorrência ${quest?.recurrence.toLowerCase()} foi salva no banco.`);
+      }
       catch (error) { flash(error instanceof Error ? error.message : 'Falha ao concluir quest.'); }
       return;
     }
@@ -366,7 +374,8 @@ function App() {
       <div className="content">
         {databaseError && <div className="settings-alert"><AlertCircle size={17}/><span>{databaseError} Abra Configurações para verificar a conexão.</span><button className="text-button" onClick={() => setPage('Configurações')}>Configurar</button></div>}
         {page === 'Início' && <>
-          <div className="welcome-row"><div><div className="eyebrow"><Sparkles size={14}/> {new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()).toLocaleUpperCase('pt-BR')}</div><h1>Bom dia, {profile.nickname} <span>☀️</span></h1><p>Um passo de cada vez. Veja o que merece sua atenção hoje.</p></div><button className="primary-button" onClick={() => openCreateQuest()}><Plus size={17}/> Nova quest</button></div>
+          <div className="welcome-row"><div><div className="eyebrow"><Sparkles size={14}/> {new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()).toLocaleUpperCase('pt-BR')}</div><h1>{greeting}, {profile.nickname} <span>{greetingIcon}</span></h1><p>Um passo de cada vez. Veja o que merece sua atenção hoje.</p></div><button className="primary-button" onClick={() => openCreateQuest()}><Plus size={17}/> Nova quest</button></div>
+          <MissionBanner openCount={openQuests.length} dueToday={dueToday} completedCount={completedCount} onOpen={() => setPage('Minhas quests')} />
           <section className="stats-grid">
             <StatCard icon={<Target size={17}/>} label="Quests em andamento" value={String(openQuests.length)} note="em todos os seus grupos" tone="lavender" />
             <StatCard icon={<Clock3 size={17}/>} label="Para hoje" value={String(dueToday)} note={dueToday ? 'ocorrências com prazo de hoje' : 'nenhum prazo para hoje'} tone="peach" />
@@ -553,6 +562,30 @@ function InviteModal({ group, quests, onClose, onSend }: { group: WorkspaceGroup
 
 function StatCard({ icon, label, value, note, tone }: { icon: ReactNode; label: string; value: string; note: ReactNode; tone: string }) {
   return <div className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-label">{label}</div><div className="stat-value">{value}</div><div className="stat-note">{note}</div></div>;
+}
+
+function MissionBanner({ openCount, dueToday, completedCount, onOpen }: { openCount: number; dueToday: number; completedCount: number; onOpen: () => void }) {
+  return <section className="mission-banner" aria-label="Resumo das missões">
+    <div className="mission-banner-copy">
+      <div className="mission-banner-kicker"><Sparkles size={13}/> CENTRAL DE MISSÕES <span>•</span> SEU WORKSPACE</div>
+      <h2>Pronto para a próxima<br/><span>grande missão?</span></h2>
+      <p>Escolha um objetivo, reúna seu time e avance uma etapa de cada vez.</p>
+      <div className="mission-banner-stats">
+        <span><i className="mission-status-dot active"/> <b>{openCount}</b> {openCount === 1 ? 'missão ativa' : 'missões ativas'}</span>
+        <span><i className="mission-status-dot today"/> <b>{dueToday}</b> para hoje</span>
+        <span><CheckCircle2 size={14}/> <b>{completedCount}</b> concluídas</span>
+      </div>
+      <button className="mission-banner-button" onClick={onOpen}>Explorar missões <ArrowRight size={15}/></button>
+    </div>
+    <div className="mission-banner-art" aria-hidden="true">
+      <div className="mission-orbit orbit-one"/><div className="mission-orbit orbit-two"/>
+      <span className="mission-star star-one"><Sparkles size={18}/></span>
+      <span className="mission-star star-two"><Sparkles size={12}/></span>
+      <span className="mission-star star-three"><i/></span>
+      <div className="mission-compass"><Compass size={76} strokeWidth={1.1}/><span><Target size={26}/></span></div>
+      <span className="mission-art-label">QUESTLY<br/><b>DIÁRIO DE AVENTURA</b></span>
+    </div>
+  </section>;
 }
 
 function Progress({ quest }: { quest: Quest }) {
