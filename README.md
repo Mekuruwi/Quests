@@ -68,4 +68,6 @@ Para publicar uma versão:
 4. Crie e envie a tag correspondente, por exemplo: `git tag -a v0.1.1 -m "Questly v0.1.1"` e `git push origin v0.1.1`.
 5. O workflow verifica a tag, compila os instaladores para Windows, macOS e Linux e confere os manifestos de atualização antes de criar o GitHub Release com notas geradas.
 
+O job **Publish GitHub Release** fica `skipped` em pushes comuns para `main` e em execuções manuais sem `release_tag`; isso é esperado para não publicar uma versão em cada commit. Para publicar manualmente/reprocessar, abra **Actions > CI/CD > Run workflow**, informe uma tag existente (por exemplo `v0.1.1`) no campo `release_tag` e execute. O workflow valida a versão e compila os artefatos diretamente dessa tag antes da publicação. Se a tag não existir ou não corresponder à versão do pacote, a execução falha sem criar um release.
+
 O workflow exige que a tag e `package-lock.json` correspondam à versão do pacote; também valida que os instaladores e metadados das três plataformas existem antes de publicar. Usa `GITHUB_TOKEN` com permissão de escrita apenas no job de release. Não há pipeline de testes automatizados neste repositório ainda; a validação atual é a compilação/typecheck do renderer e do processo principal do Electron.
