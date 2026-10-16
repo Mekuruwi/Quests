@@ -11,7 +11,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && tsc -p tsconfig.electron.json && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "electron:build": "npm run build && electron-builder --publish never"
+    "electron:build": "npm run build && electron-builder --publish never",
+    "release:check": "node scripts/check-release.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -46,6 +47,7 @@
       "package.json"
     ],
     "win": {
+      "artifactName": "Questly-Setup-${version}.${ext}",
       "target": [
         "nsis"
       ]

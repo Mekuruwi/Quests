@@ -54,7 +54,7 @@ npm run electron:build
 
 O número exibido pelo app vem de `version` em `package.json`; mantenha também `package-lock.json` sincronizado. Em **Configurações > Atualizações**, é possível conferir a versão instalada, verificar novas versões, acompanhar o download e reiniciar para instalar. O app instalado também verifica atualizações ao iniciar.
 
-As atualizações são distribuídas pelos GitHub Releases do repositório `Mekuruwi/Quests`. Para publicar, aumente a versão, envie a tag `v<versão>` correspondente e aguarde o workflow anexar os instaladores e metadados de atualização para cada plataforma. Builds de desenvolvimento não consultam releases.
+As atualizações são distribuídas pelos GitHub Releases do repositório `Mekuruwi/Quests`. Para publicar, aumente a versão, valide-a com `npm run release:check`, envie a tag `v<versão>` correspondente e aguarde o workflow anexar os instaladores e metadados de atualização para cada plataforma. Builds de desenvolvimento não consultam releases.
 
 ## CI/CD e releases
 
@@ -62,8 +62,10 @@ O workflow do GitHub Actions em `.github/workflows/ci-cd.yml` verifica segredos 
 
 Para publicar uma versão:
 
-1. Atualize `version` em `package.json` e `package-lock.json`.
-2. Faça merge em `main` e crie uma tag correspondente à versão, por exemplo `v0.1.1`.
-3. Envie a tag (`git push origin v0.1.1`). O workflow compila as três plataformas e cria um GitHub Release com notas geradas e os instaladores anexados.
+1. Atualize `version` em `package.json` e sincronize o lockfile com `npm install --package-lock-only`.
+2. Rode `npm run release:check` e valide localmente o instalador com `npm run electron:build`.
+3. Faça commit e merge dessas alterações em `main`.
+4. Crie e envie a tag correspondente, por exemplo: `git tag -a v0.1.1 -m "Questly v0.1.1"` e `git push origin v0.1.1`.
+5. O workflow verifica a tag, compila os instaladores para Windows, macOS e Linux e confere os manifestos de atualização antes de criar o GitHub Release com notas geradas.
 
-O workflow exige que a tag corresponda à versão do pacote e usa `GITHUB_TOKEN` com permissão de escrita apenas no job de release. Não há pipeline de testes automatizados neste repositório ainda; a validação atual é a compilação/typecheck do renderer e do processo principal do Electron.
+O workflow exige que a tag e `package-lock.json` correspondam à versão do pacote; também valida que os instaladores e metadados das três plataformas existem antes de publicar. Usa `GITHUB_TOKEN` com permissão de escrita apenas no job de release. Não há pipeline de testes automatizados neste repositório ainda; a validação atual é a compilação/typecheck do renderer e do processo principal do Electron.
